@@ -1,8 +1,8 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { env } from 'cloudflare:workers';
+
 export function authEnv(key: string) {
-  return String((env as unknown as Record<string, unknown>)[key] || '');
+  return process.env[key] || '';
 }
 export function authReady() {
   return !!authEnv('SUPABASE_URL') && !!authEnv('SUPABASE_PUBLISHABLE_KEY');
@@ -37,3 +37,4 @@ export async function authClient() {
     },
   );
 }
+

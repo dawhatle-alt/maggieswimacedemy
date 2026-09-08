@@ -642,7 +642,6 @@ export default function SwimApp() {
                     {!data.user ? (
                       <SignIn
                         ready={data.authReady}
-                        review={data.authMode === 'review'}
                       />
                     ) : (
                       <form
@@ -815,7 +814,6 @@ export default function SwimApp() {
             {!data.user ? (
               <SignIn
                 ready={data.authReady}
-                review={data.authMode === 'review'}
               />
             ) : (
               <>
@@ -824,16 +822,11 @@ export default function SwimApp() {
                   <button
                     onClick={() =>
                       void act(async () => {
-                        if (data.authMode === 'review')
-                          window.location.assign(
-                            '/signout-with-chatgpt?return_to=%2F',
-                          );
-                        else {
+                        
                           await request('auth/logout', 'POST', {});
                           setBookings([]);
                           setAdmin(null);
-                          await load();
-                        }
+                          await load();
                       })
                     }
                   >
@@ -883,7 +876,6 @@ export default function SwimApp() {
             {!data.user ? (
               <SignIn
                 ready={data.authReady}
-                review={data.authMode === 'review'}
               />
             ) : !data.user.isAdmin ? (
               <div className="panel">
@@ -898,14 +890,9 @@ export default function SwimApp() {
                   className="secondary"
                   onClick={() =>
                     void act(async () => {
-                      if (data.authMode === 'review')
-                        window.location.assign(
-                          '/signout-with-chatgpt?return_to=%2F%3Fview%3Dmanage',
-                        );
-                      else {
+                      
                         await request('auth/logout', 'POST', {});
-                        await load();
-                      }
+                        await load();
                     })
                   }
                 >

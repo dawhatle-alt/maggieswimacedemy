@@ -1,10 +1,10 @@
-import { env } from 'cloudflare:workers';
+
 import { authClient, authReady } from './auth';
-import { getChatGPTUser } from '@/app/chatgpt-auth';
+
 import { database } from '@/db';
 import { DEFAULT_SETTINGS } from './domain';
 export function settingEnv(key: string) {
-  return String((env as unknown as Record<string, unknown>)[key] || '');
+  return process.env[key] || '';
 }
 export async function identity() {
   let u: {
@@ -13,9 +13,7 @@ export async function identity() {
     fullName: string | null;
     displayName: string;
   } | null = null;
-  if (settingEnv('AUTH_MODE') === 'review') {
-    u = await getChatGPTUser();
-  } else if (authReady()) {
+  if (authReady()) {
     const client = await authClient();
     const { data, error } = await client.auth.getUser();
     if (!error && data.user?.email && data.user.email_confirmed_at) {
@@ -80,13 +78,14 @@ export async function api(run: () => Promise<Response>) {
   try {
     return await run();
   } catch (e) {
-    const err = e as Error & { status?: number };
-    if (err.message.includes('UNIQUE constraint'))
+    const err = e as Error & { status?: number; code?: string };
+    if (err.code === '23505' || err.message.includes('UNIQUE constraint'))
       return json(
         { error: 'This time has just been requested. Please choose another.' },
         409,
       );
-    console.error('Booking API:', err.message);
+    if (err.code === '23P01' || err.code === 'P0001') return json({error:'This time is no longer available or overlaps an existing lesson.'},409);
+    console.error('Booking API:', err.code || err.name);
     return json(
       {
         error: err.status
@@ -108,3 +107,4 @@ export async function requireAdmin() {
     fail('Only Maggie’s authorized account can manage lessons.', 403);
   return u;
 }
+

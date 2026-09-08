@@ -3,10 +3,8 @@ import { useState } from 'react';
 import { ArrowRight, Mail } from 'lucide-react';
 export default function SignIn({
   ready = false,
-  review = false,
 }: {
   ready?: boolean;
-  review?: boolean;
 }) {
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState(''),
@@ -92,16 +90,6 @@ export default function SignIn({
       {message && (
         <p role="status" className="success">
           {message}
-        </p>
-      )}
-      {review && (
-        <p className="muted">
-          <a
-            href="/signin-with-chatgpt?return_to=%2F%3Fview%3Dportal"
-            target="_top"
-          >
-            Private review: sign in with ChatGPT
-          </a>
         </p>
       )}
     </div>

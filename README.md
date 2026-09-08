@@ -78,4 +78,3 @@ Generated illustration: original AI-created artwork; it is not a photo of Maggie
 
 Dependency audit after security updates: no high/critical advisories; four moderate advisories remain in the Drizzle build-time esbuild loader chain. These development tools are not included in the deployed Worker. Do not expose their development servers to untrusted networks.
 
-

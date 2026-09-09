@@ -651,7 +651,7 @@ export default function SwimApp() {
                             new FormData(e.currentTarget),
                           );
                           void act(async () => {
-                            await request('bookings', 'POST', {
+                            const result = await request('bookings', 'POST', {
                               ...f,
                               slotId: slot?.id,
                               location,
@@ -660,7 +660,9 @@ export default function SwimApp() {
                             navigate('portal');
                             await loadBookings();
                             setNotice(
-                              'Request sent to Maggie. Your lesson is awaiting her approval.',
+                              result.emailStatus === 'sent'
+                                ? 'Request sent to Maggie. A request summary has been emailed to you. Your lesson is awaiting her approval.'
+                                : 'Your request is saved and awaiting Maggie’s approval. The summary email is delayed; your details are available here in the portal.',
                             );
                             setStep(1);
                             setSlot(null);
@@ -834,7 +836,7 @@ export default function SwimApp() {
                   </button>
                 </p>
                 <div className="notice">
-                  Requests are reviewed by Maggie. Check here for approval and
+                  Requests are reviewed by Maggie. We email your request details and approval. Check here for updates and
                   Square invoices.
                 </div>
                 <button
@@ -940,6 +942,21 @@ export default function SwimApp() {
                       <TabsTrigger value="settings">Settings</TabsTrigger>
                     </TabsList>
                     <TabsContent value="requests">
+                      {!!admin.emails?.some((e: Row) => e.state === 'pending' || e.state === 'review') && (
+                        <div className="notice" role="status">
+                          <p>Some booking emails need attention. Bookings are saved.</p>
+                          {admin.emails.filter((e: Row) => e.state === 'pending' || e.state === 'review').map((e: Row) => (
+                            <p key={e.id}>
+                              {admin.bookings.find((b: Row) => b.id === e.booking_id)?.parent || 'Customer'} — {e.kind === 'submitted' ? 'request summary' : 'approval confirmation'}: {e.state === 'review' ? 'Check delivery in Resend before contacting the family; the safe retry window has passed.' : 'Waiting to send'}
+                            </p>
+                          ))}
+                          <button className="secondary" disabled={busy} onClick={() => void act(async () => {
+                            const result = await request('booking-emails', 'POST', {});
+                            await loadAdmin();
+                            setNotice(`${result.sent} booking email(s) accepted for delivery. Any remaining messages are listed below.`);
+                          })}>Retry pending emails</button>
+                        </div>
+                      )}
                       {admin.bookings.length ? (
                         admin.bookings.map((b: Row) => bookingCard(b, true))
                       ) : (

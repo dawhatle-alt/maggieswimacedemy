@@ -1,5 +1,6 @@
 import { api, json, requireUser, body, str, config, fail } from '@/lib/server';
 import { database } from '@/db';
+import { notifyBooking } from '@/lib/booking-emails';
 export const dynamic = 'force-dynamic';
 export async function GET() {
   return api(async () => {
@@ -59,6 +60,7 @@ export async function POST(req: Request) {
       .run();
     if (!r.meta.changes)
       fail('This time or location is no longer available.', 409);
-    return json({ id, status: 'pending' }, 201);
+    const emailStatus = await notifyBooking(id, 'submitted');
+    return json({ id, status: 'pending', emailStatus }, 201);
   });
 }

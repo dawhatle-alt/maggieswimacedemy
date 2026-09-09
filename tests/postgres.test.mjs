@@ -19,6 +19,7 @@ test('PostgreSQL schema, application queries and booking invariants',async()=>{
  const pg=new PGlite();
  try{
   await pg.exec(readFileSync('db/postgres.sql','utf8'));
+  await pg.exec(readFileSync('supabase/migrations/20260909013936_booking_notification_emails.sql','utf8'));
   await pg.exec('SET search_path=maggie,pg_catalog');
   const db=createDatabase(async(sql,values)=>{const r=await pg.query(sql,values);return {rows:r.rows,count:r.affectedRows??r.rows.length};});
   await db.prepare('INSERT INTO services(id,name,description,duration,price,active) VALUES(?,?,?,?,?,?)').bind('lesson','Private lesson','Test',30,4500,1).run();
@@ -39,8 +40,8 @@ test('PostgreSQL schema, application queries and booking invariants',async()=>{
   await db.prepare('UPDATE bookings SET status=? WHERE id=?').bind('cancelled','booking').run();
   await db.prepare(insert).bind('replacement',...values.slice(1)).run();
   const tables=await pg.query("SELECT relname,relrowsecurity FROM pg_class WHERE relnamespace='maggie'::regnamespace AND relkind='r'");
-  assert.equal(tables.rows.length,4);assert.ok(tables.rows.every(t=>t.relrowsecurity));
-  const paths=readdirSync('app/api',{recursive:true}).filter(p=>p.endsWith('.ts')).map(p=>'app/api/'+p).concat('lib/server.ts');
+  assert.equal(tables.rows.length,5);assert.ok(tables.rows.every(t=>t.relrowsecurity));
+  const paths=readdirSync('app/api',{recursive:true}).filter(p=>p.endsWith('.ts')).map(p=>'app/api/'+p).concat('lib/server.ts','lib/email-core.ts');
   let count=0;
   for(const path of paths){const src=readFileSync(path,'utf8');for(const m of src.matchAll(/\.prepare\(\s*(['"\x60])([\s\S]*?)\1\s*[,)]/g)){
    const {sql}=postgresQuery(m[2]);await pg.exec('PREPARE check_'+count+' AS '+sql);count++;

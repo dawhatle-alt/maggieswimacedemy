@@ -1,6 +1,7 @@
 import { api, json, requireUser, body, str, fail } from '@/lib/server';
 import { database } from '@/db';
 import { transitionAllowed } from '@/lib/domain';
+import { notifyBooking } from '@/lib/booking-emails';
 export const dynamic = 'force-dynamic';
 export async function PATCH(
   req: Request,
@@ -34,6 +35,7 @@ export async function PATCH(
       .run();
     if (!r.meta.changes)
       fail('The booking changed. Refresh and try again.', 409);
-    return json({ ok: true });
+    const emailStatus = status === 'confirmed' ? await notifyBooking(id, 'confirmed') : undefined;
+    return json({ ok: true, emailStatus });
   });
 }

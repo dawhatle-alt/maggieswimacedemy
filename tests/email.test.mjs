@@ -1,0 +1,51 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {readFileSync} from 'node:fs';
+import {PGlite} from '@electric-sql/pglite';
+import {createDatabase} from '../db/adapter.ts';
+import {bookingEmail,deliverBookingEmail} from '../lib/email-core.ts';
+const env={apiKey:'test',from:'Maggie <noreply@example.test>',appUrl:'https://example.test'};
+const migration=readFileSync('supabase/migrations/20260909013936_booking_notification_emails.sql','utf8');
+test('email details, Central Time, HTML escaping and honest statuses',()=>{
+ const b={email:'family@example.test',parent:'Parent <script>',swimmer:'A & B',service_name:'Private lesson',price:4500,duration:30,start:'2027-07-10T14:00:00Z',location:'home',address:'123 Pool <Road>'};
+ const pending=bookingEmail(b,'submitted',env),approved=bookingEmail(b,'confirmed',env);
+ assert.match(pending.text,/awaiting Maggie/);assert.match(pending.text,/9:00 AM CDT/);assert.match(pending.text,/\$45.00/);
+ assert.match(pending.html,/Parent &lt;script&gt;/);assert.match(pending.html,/A &amp; B/);assert.doesNotMatch(pending.html,/<script>/);
+ assert.match(approved.text,/Maggie has approved/);assert.match(approved.text,/not an invoice/);
+ assert.match(bookingEmail({...b,start:'2027-12-10T15:00:00Z'},'confirmed',env).text,/9:00 AM CST/);
+ assert.throws(()=>bookingEmail(b,'submitted',{...env,appUrl:'javascript:alert(1)'}));
+});
+test('transactional notifications, deduplication, retry safety and superseded events',async()=>{
+ const pg=new PGlite();
+ try{
+  await pg.exec(readFileSync('db/postgres.sql','utf8'));await pg.exec(migration);await pg.exec(migration);
+  await pg.exec("SET search_path=maggie,pg_catalog; INSERT INTO services VALUES('lesson','Private lesson','Test',30,4500,1); INSERT INTO slots VALUES('slot','lesson','2099-07-10T14:00Z','2099-07-10T14:30Z','2099-07-10T14:45Z','both',1)");
+  const db=createDatabase(async(sql,values)=>{const r=await pg.query(sql,values);return {rows:r.rows,count:r.affectedRows??r.rows.length};});
+  const insert="INSERT INTO bookings(id,slot_id,user_id,email,parent,swimmer,phone,location,address,notes,service_name,price,duration,start,\"end\",created) VALUES('booking','slot','family','family@example.test','Parent','Swimmer','5551234567','home','Test address','Private notes omitted','Private lesson',4500,30,'2099-07-10T14:00Z','2099-07-10T14:30Z',now())";
+  await pg.exec('BEGIN; '+insert+'; ROLLBACK');
+  assert.equal((await pg.query('SELECT * FROM booking_emails')).rows.length,0);
+  await pg.exec(insert);
+  const queued=(await pg.query('SELECT * FROM booking_emails')).rows;
+  assert.equal(queued.length,1);assert.equal(queued[0].kind,'submitted');assert.equal(queued[0].booking.notes,undefined);
+  let calls=[];
+  const success=async(url,options)=>{calls.push(options);return Response.json({id:'provider-id'});};
+  assert.equal(await deliverBookingEmail(db,'booking:submitted',env,success),'sent');
+  assert.equal(await deliverBookingEmail(db,'booking:submitted',env,success),'unchanged');assert.equal(calls.length,1);
+  await pg.exec("UPDATE bookings SET status='confirmed' WHERE id='booking'; UPDATE bookings SET status='confirmed' WHERE id='booking'");
+  assert.equal((await pg.query('SELECT * FROM booking_emails')).rows.length,2);
+  let failedPayload;
+  assert.equal(await deliverBookingEmail(db,'booking:confirmed',env,async(url,options)=>{failedPayload=options;throw new Error('timeout');}),'pending');
+  assert.equal((await pg.query("SELECT status FROM bookings WHERE id='booking'")).rows[0].status,'confirmed');
+  assert.equal(await deliverBookingEmail(db,'booking:confirmed',{...env,from:'changed@example.test'},success),'sent');
+  assert.equal(calls[1].body,failedPayload.body);assert.equal(calls[1].headers['Idempotency-Key'],failedPayload.headers['Idempotency-Key']);
+  await pg.exec("UPDATE booking_emails SET state='pending',locked_until=now()+interval '2 minutes' WHERE kind='confirmed'");
+  assert.equal(await deliverBookingEmail(db,'booking:confirmed',env,success),'unchanged');assert.equal(calls.length,2);
+  await pg.exec("UPDATE booking_emails SET locked_until=NULL,first_attempt_at=now()-interval '24 hours' WHERE kind='confirmed'");
+  assert.equal(await deliverBookingEmail(db,'booking:confirmed',env,success),'unchanged');
+  assert.equal((await pg.query("SELECT state FROM booking_emails WHERE kind='confirmed'")).rows[0].state,'review');
+  await pg.exec("UPDATE booking_emails SET state='pending',first_attempt_at=NULL WHERE kind='confirmed'; UPDATE bookings SET status='cancelled' WHERE id='booking'");
+  assert.equal(await deliverBookingEmail(db,'booking:confirmed',env,success),'unchanged');
+  assert.equal((await pg.query("SELECT state FROM booking_emails WHERE kind='confirmed'")).rows[0].state,'skipped');
+  const rls=await pg.query("SELECT relrowsecurity FROM pg_class WHERE oid='maggie.booking_emails'::regclass");assert.equal(rls.rows[0].relrowsecurity,true);
+ }finally{await pg.close();}
+});

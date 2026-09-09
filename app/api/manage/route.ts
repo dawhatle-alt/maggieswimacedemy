@@ -30,6 +30,7 @@ export async function GET() {
       services: services.results,
       slots: slots.results,
       settings: await config(),
+      emails: (await db.prepare('SELECT id,booking_id,kind,state,error_code,sent_at FROM booking_emails ORDER BY created DESC LIMIT 2000').all()).results,
     });
   });
 }
